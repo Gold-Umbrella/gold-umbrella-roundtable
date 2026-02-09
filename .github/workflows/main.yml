@@ -1,0 +1,37 @@
+name: Daily Round Table Oracle
+
+on:
+  schedule:
+    - cron: '33 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install openai
+
+      - name: Run daily generator
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python engine/generate_report.py
+
+      - name: Commit updated reports
+        run: |
+          git config user.name "gold-umbrella-bot"
+          git config user.email "bot@goldumbrella.dev"
+          git add reports/
+          git commit -m "Daily oracle report" || echo "No changes to commit"
+          git push
