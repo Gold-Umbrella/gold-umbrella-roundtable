@@ -1,11 +1,11 @@
 import json
 import os
 import random
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from openai import OpenAI  # official SDK uses OpenAI() client :contentReference[oaicite:1]{index=1}
+from openai import OpenAI  # official SDK uses OpenAI() client
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINE_DIR = ROOT / "engine"
@@ -20,6 +20,32 @@ SPECIAL_GLYPH_MMDD = "01-01"
 
 ENGINE_VERSION = "0.1"
 
+
+# ---------- Encoding-safe JSON helpers ----------
+
+def read_text_smart(path: Path) -> str:
+    """
+    Reads text safely from UTF-8 / UTF-8-SIG / UTF-16 (LE/BE) files.
+    The UTF-16 BOM is what causes the 0xFF decode error if you read as UTF-8.
+    """
+    b = path.read_bytes()
+    if b.startswith(b"\xff\xfe") or b.startswith(b"\xfe\xff"):
+        return b.decode("utf-16")
+    if b.startswith(b"\xef\xbb\xbf"):
+        return b.decode("utf-8-sig")
+    return b.decode("utf-8")
+
+
+def read_json_smart(path: Path) -> dict:
+    return json.loads(read_text_smart(path))
+
+
+def write_json_utf8(path: Path, obj: dict, indent: int = 2) -> None:
+    path.write_text(json.dumps(obj, indent=indent, ensure_ascii=False), encoding="utf-8", newline="\n")
+
+
+# ---------- Core engine ----------
+
 @dataclass(frozen=True)
 class CouncilMember:
     name: str
@@ -27,33 +53,39 @@ class CouncilMember:
     stance: str
     cadence: str
 
+
 def build_council() -> list[CouncilMember]:
-    # Bulletproof minimal: you can expand this list later to the full 121.
-    # For now: include Glyph + a starter set so the engine runs end-to-end.
     base = [
-        CouncilMember(GLYPH_NAME, ["systems","power","technology"], "constraint-first realism; convert chaos into structure", "severe minimal"),
-        CouncilMember("Nina Simone", ["culture","justice","music"], "moral confrontation; truth over comfort", "blues-fire"),
-        CouncilMember("James Baldwin", ["culture","identity","society"], "clarity under pressure; name the lie precisely", "sermon-knife"),
-        CouncilMember("Sun Tzu", ["war","strategy","statecraft"], "win by position and timing; spend force wisely", "laconic"),
-        CouncilMember("Miyamoto Musashi", ["war","discipline","craft"], "mastery through practice; cut what’s unnecessary", "cold-precise"),
-        CouncilMember("Mary Shelley", ["art","science","ethics"], "creation carries consequence; responsibility is the frame", "gothic-clarity"),
-        CouncilMember("Victor Hugo", ["politics","humanity","history"], "see the people; make the age visible", "grand-orator"),
-        # Add more until you reach 121; same structure.
+        CouncilMember(GLYPH_NAME, ["systems", "power", "technology"],
+                      "constraint-first realism; convert chaos into structure", "severe minimal"),
+        CouncilMember("Nina Simone", ["culture", "justice", "music"],
+                      "moral confrontation; truth over comfort", "blues-fire"),
+        CouncilMember("James Baldwin", ["culture", "identity", "society"],
+                      "clarity under pressure; name the lie precisely", "sermon-knife"),
+        CouncilMember("Sun Tzu", ["war", "strategy", "statecraft"],
+                      "win by position and timing; spend force wisely", "laconic"),
+        CouncilMember("Miyamoto Musashi", ["war", "discipline", "craft"],
+                      "mastery through practice; cut what’s unnecessary", "cold-precise"),
+        CouncilMember("Mary Shelley", ["art", "science", "ethics"],
+                      "creation carries consequence; responsibility is the frame", "gothic-clarity"),
+        CouncilMember("Victor Hugo", ["politics", "humanity", "history"],
+                      "see the people; make the age visible", "grand-orator"),
+        # Add more later
     ]
-    # Ensure Glyph exists exactly once
     names = [m.name for m in base]
     assert names.count(GLYPH_NAME) == 1
     return base
 
+
 def load_or_init_state(council_names: list[str]) -> dict:
     ENGINE_DIR.mkdir(parents=True, exist_ok=True)
+
     if STATE_PATH.exists():
-        return index = json.loads(index_path.read_text(encoding="utf-8-sig"))
-    # Randomize once at birth; freeze forever
+        return read_json_smart(STATE_PATH)
+
     seed = int.from_bytes(os.urandom(8), "big")
     rng = random.Random(seed)
 
-    # Rotation excludes special speakers (Ellis is special-day only; Glyph is in council)
     rotation = council_names.copy()
     rng.shuffle(rotation)
 
@@ -63,11 +95,13 @@ def load_or_init_state(council_names: list[str]) -> dict:
         "pointer": 0,
         "cycles_completed": 0,
     }
-    STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    write_json_utf8(STATE_PATH, state)
     return state
+
 
 def utc_today() -> datetime:
     return datetime.now(timezone.utc)
+
 
 def date_path(dt: datetime) -> Path:
     yyyy = dt.strftime("%Y")
@@ -75,11 +109,12 @@ def date_path(dt: datetime) -> Path:
     ymd = dt.strftime("%Y-%m-%d")
     return REPORTS_DIR / yyyy / mm / f"{ymd}.json"
 
+
 def ensure_reports_dirs(dt: datetime) -> None:
     (REPORTS_DIR / dt.strftime("%Y") / dt.strftime("%m")).mkdir(parents=True, exist_ok=True)
 
+
 def web_intake(client: OpenAI, dt: datetime) -> str:
-    # Tension-weighted civilizational field intake via built-in web search tool :contentReference[oaicite:2]{index=2}
     prompt = f"""
 Date (UTC): {dt.strftime('%Y-%m-%d')}
 Task: Collect a tension-weighted snapshot of today's civilization across finance, war/geopolitics, technology, culture, science.
@@ -95,6 +130,7 @@ Rules:
     )
     return resp.output_text.strip()
 
+
 def pick_today_winner(dt: datetime, state: dict) -> tuple[str, bool]:
     mmdd = dt.strftime("%m-%d")
     if mmdd == SPECIAL_ELLIS_MMDD:
@@ -107,6 +143,7 @@ def pick_today_winner(dt: datetime, state: dict) -> tuple[str, bool]:
     winner = rotation[pointer]
     return winner, False
 
+
 def advance_rotation(state: dict) -> None:
     rotation = state["rotation"]
     state["pointer"] += 1
@@ -114,12 +151,10 @@ def advance_rotation(state: dict) -> None:
         state["pointer"] = 0
         state["cycles_completed"] += 1
 
+
 def generate_report(client: OpenAI, dt: datetime, council: list[CouncilMember], winner_name: str, signals: str) -> dict:
-    # 7 voices: Glyph (anchor) + 6 others, always include the scheduled winner.
     names = [m.name for m in council]
     if winner_name not in names and winner_name != ELLIS_NAME:
-        # If the council list is incomplete while you're building up to 121,
-        # fall back to Glyph as the winner so the pipeline never breaks.
         winner_name = GLYPH_NAME
 
     pool = [m for m in council if m.name not in {GLYPH_NAME, winner_name}]
@@ -130,8 +165,8 @@ def generate_report(client: OpenAI, dt: datetime, council: list[CouncilMember], 
     if winner_name != ELLIS_NAME:
         voices.append(next(m for m in council if m.name == winner_name))
     else:
-        # Ellis is special, not in council list
-        voices.append(CouncilMember(ELLIS_NAME, ["proctor-head"], "stewardship; scope; coherence; craft as duty", "plain-iron"))
+        voices.append(CouncilMember(ELLIS_NAME, ["proctor-head"],
+                                    "stewardship; scope; coherence; craft as duty", "plain-iron"))
 
     voices.extend(sampled)
     voices = voices[:7]
@@ -172,18 +207,18 @@ Field signals (today's intake):
     text = resp.output_text.strip()
     data = json.loads(text)  # enforce strict JSON
 
-    # enforce invariant keys
     data["date"] = dt.strftime("%Y-%m-%d")
     data.setdefault("artifact", {"status": "PENDING", "link": ""})
     data["engine_version"] = ENGINE_VERSION
     return data
+
 
 def update_indexes(dt: datetime, daily_path: Path) -> None:
     index_path = REPORTS_DIR / "index.json"
     latest_path = REPORTS_DIR / "latest.json"
 
     if index_path.exists():
-        index = json.loads(index_path.read_text(encoding="utf-8-sig"))
+        index = read_json_smart(index_path)  # <-- THIS is the big fix
     else:
         index = {"dates": []}
 
@@ -191,20 +226,21 @@ def update_indexes(dt: datetime, daily_path: Path) -> None:
     if ymd not in index["dates"]:
         index["dates"].append(ymd)
 
-    # newest first
     index["dates"] = sorted(index["dates"], reverse=True)
 
-    index_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+    write_json_utf8(index_path, index)
 
-    # latest.json is a copy of today’s report
-    latest_path.write_text(daily_path.read_text(encoding="utf-8"), encoding="utf-8")
+    # latest.json is a copy of today’s report (read safely, write utf-8)
+    latest_obj = read_json_smart(daily_path)
+    write_json_utf8(latest_path, latest_obj)
+
 
 def main():
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise SystemExit("OPENAI_API_KEY is missing (set in GitHub repo Secrets).")
 
-    client = OpenAI()
+    client = OpenAI(api_key=api_key)
     council = build_council()
     dt = utc_today()
 
@@ -219,18 +255,17 @@ def main():
     report = generate_report(client, dt, council, winner_name, signals)
 
     out_path = date_path(dt)
-    # Immutable by policy: if file exists, do not overwrite.
     if out_path.exists():
         raise SystemExit(f"Refusing to overwrite existing report: {out_path}")
 
-    out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    write_json_utf8(out_path, report)
 
     update_indexes(dt, out_path)
 
-    # Only advance rotation on non-special days
     if not is_special:
         advance_rotation(state)
-        STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        write_json_utf8(STATE_PATH, state)
+
 
 if __name__ == "__main__":
     main()
