@@ -183,7 +183,7 @@ def update_indexes(dt: datetime, daily_path: Path) -> None:
     latest_path = REPORTS_DIR / "latest.json"
 
     if index_path.exists():
-        index = json.loads(index_path.read_text(encoding="utf-8"))
+        index = json.loads(index_path.read_text(encoding="utf-8-sig"))
     else:
         index = {"dates": []}
 
