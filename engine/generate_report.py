@@ -217,8 +217,23 @@ def update_indexes(dt: datetime, daily_path: Path) -> None:
     index_path = REPORTS_DIR / "index.json"
     latest_path = REPORTS_DIR / "latest.json"
 
+    def read_text_safely(path: Path) -> str:
+        b = path.read_bytes()
+
+        # UTF-16 BOM (little or big endian)
+        if b.startswith(b"\xff\xfe") or b.startswith(b"\xfe\xff"):
+            return b.decode("utf-16")
+
+        # UTF-8 BOM
+        if b.startswith(b"\xef\xbb\xbf"):
+            return b.decode("utf-8-sig")
+
+        # Plain UTF-8
+        return b.decode("utf-8")
+
+    # --- load/repair index.json ---
     if index_path.exists():
-        index = read_json_smart(index_path)  # <-- THIS is the big fix
+        index = json.loads(read_text_safely(index_path))
     else:
         index = {"dates": []}
 
@@ -226,13 +241,14 @@ def update_indexes(dt: datetime, daily_path: Path) -> None:
     if ymd not in index["dates"]:
         index["dates"].append(ymd)
 
+    # newest first
     index["dates"] = sorted(index["dates"], reverse=True)
 
-    write_json_utf8(index_path, index)
+    # write back as clean UTF-8 every time (this “heals” bad encodings)
+    index_path.write_text(json.dumps(index, indent=2), encoding="utf-8", newline="\n")
 
-    # latest.json is a copy of today’s report (read safely, write utf-8)
-    latest_obj = read_json_smart(daily_path)
-    write_json_utf8(latest_path, latest_obj)
+    # latest.json is a copy of today’s report (today’s report is already UTF-8)
+    latest_path.write_text(daily_path.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
 
 
 def main():
