@@ -19,9 +19,30 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
+        run: pip install openai
+      - name: Normalize report files to UTF-8
         run: |
-          pip install openai
+          python - <<'PY'
+          from pathlib import Path
 
+          for f in ["reports/index.json", "reports/latest.json"]:
+          p = Path(f)
+          if not p.exists():
+            continue
+
+          b = p.read_bytes()
+
+          if b.startswith(b"\xff\xfe") or b.startswith(b"\xfe\xff"):
+            text = b.decode("utf-16")
+          elif b.startswith(b"\xef\xbb\xbf"):
+            text = b.decode("utf-8-sig")
+          else:
+            text = b.decode("utf-8", errors="strict")
+
+            p.write_text(text, encoding="utf-8", newline="\n")
+
+            print("Normalized reports files to UTF-8")
+            PY
       - name: Run daily generator
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
