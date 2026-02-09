@@ -48,8 +48,7 @@ def build_council() -> list[CouncilMember]:
 def load_or_init_state(council_names: list[str]) -> dict:
     ENGINE_DIR.mkdir(parents=True, exist_ok=True)
     if STATE_PATH.exists():
-        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
-
+        return index = json.loads(index_path.read_text(encoding="utf-8-sig"))
     # Randomize once at birth; freeze forever
     seed = int.from_bytes(os.urandom(8), "big")
     rng = random.Random(seed)
