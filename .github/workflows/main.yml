@@ -43,6 +43,13 @@ jobs:
 
             print("Normalized reports files to UTF-8")
             PY
+      
+      - name: Run daily generator
+        env:
+          
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python engine/generate_report.py
       - name: FORENSIC - show report file bytes
         run: |
           echo "PWD:" && pwd
@@ -57,12 +64,6 @@ jobs:
                   print(" first16:", list(b[:16]))
                   print(" size:", len(b))
             PY
-      - name: Run daily generator
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          python engine/generate_report.py
-
       - name: Commit updated reports
         run: |
           git config user.name "gold-umbrella-bot"
