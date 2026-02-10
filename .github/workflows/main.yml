@@ -43,6 +43,20 @@ jobs:
 
             print("Normalized reports files to UTF-8")
             PY
+      - name: FORENSIC - show report file bytes
+        run: |
+          echo "PWD:" && pwd
+          echo "LIST reports:" && ls -la reports || true
+          python - <<'PY'
+          from pathlib import Path
+          for f in ["reports/index.json", "reports/latest.json"]:
+              p = Path(f)
+              print("\nFILE:", f, "exists:", p.exists())
+              if p.exists():
+                  b = p.read_bytes()
+                  print(" first16:", list(b[:16]))
+                  print(" size:", len(b))
+            PY
       - name: Run daily generator
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
